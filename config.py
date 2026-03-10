@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     
     together_api_key: str
     llm_model_name: str = "Qwen/Qwen2.5-7B-Instruct-Turbo"
+    jwt_secret: str = "your-fallback-secret-for-local-dev"
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
