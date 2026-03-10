@@ -175,7 +175,7 @@ async def ai_query(request: QueryRequest, token: str = Depends(verify_token)):
             cypher_query = cypher_resp.json()["choices"][0]["message"]["content"].strip()
             cypher_query = cypher_query.replace("```cypher", "").replace("```", "").strip()
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Cypher generation failed: {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Cypher generation failed (Model: {model_name}): {str(e)}")
 
     # Step 2: Execute Cypher against Neo4j
     graph_results = []
