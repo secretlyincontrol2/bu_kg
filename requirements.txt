@@ -1,0 +1,17 @@
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+neo4j>=5.10.0
+python-dotenv>=1.0.0
+httpx>=0.24.1
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Database Auth Auth
+SQLAlchemy>=2.0.0
+psycopg2-binary>=2.9.9
+passlib>=1.7.4 # For hashing API keys securely
+
+# Agentic AI capabilities
+langchain>=0.1.0
+langchain-neo4j>=0.1.0
+langchain-together>=0.0.1
