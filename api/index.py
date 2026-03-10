@@ -43,15 +43,21 @@ def verify_token(
     plain_key = credentials.credentials
     if not plain_key.startswith("bu_kg_"):
         raise HTTPException(status_code=401, detail="Invalid API Key format.")
-        
-    api_keys = db_session.query(ApiKey).all()
-    for key_record in api_keys:
-        if verify_api_key_hash(plain_key, key_record.key_hash):
-            return plain_key
+    
+    # Use direct hash lookup for efficiency
+    hashed_key = get_hash(plain_key)
+    key_record = db_session.query(ApiKey).filter(ApiKey.key_hash == hashed_key).first()
+    
+    if key_record:
+        return plain_key
             
+    # Diagnostic: Logging key hunt (useful for Vercel logs)
+    all_count = db_session.query(ApiKey).count()
+    print(f"Auth failed for key prefix {plain_key[:10]}... Total keys in DB: {all_count}")
+    
     raise HTTPException(
         status_code=401, 
-        detail="Unauthorized. Invalid API Key."
+        detail=f"Unauthorized. Invalid API Key. (Checked {all_count} keys)"
     )
 
 @app.on_event("shutdown")
