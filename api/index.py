@@ -113,6 +113,51 @@ async def graph_query(request: GraphQueryRequest, user: str = Depends(verify_tok
 # AI LLM Query Endpoint (Text-to-Cypher Pipeline)
 # -------------------------------------------------------------------------
 
+# Map SDK display names → real Together AI API IDs
+MODEL_ID_MAP = {
+    "GLM-5-FP4": "THUDM/glm-5-fp4",
+    "Qwen3.5 397B A17b": "Qwen/Qwen3.5-397B-A17B",
+    "MiniMax M2.5 FP4": "MiniMaxAI/MiniMax-M2.5-FP4",
+    "Kimi K2.5": "moonshotai/Kimi-K2.5",
+    "GLM 4.7 Fp8": "THUDM/GLM-4.7-FP8",
+    "Qwen3.5 9B FP8": "Qwen/Qwen3.5-9B",
+    "Qwen3 Coder Next Fp8": "Qwen/Qwen3-Coder-Next-FP8",
+    "Qwen3 Next 80B A3b Instruct": "Qwen/Qwen3-Next-80B-A3B-Instruct",
+    "Qwen3 Coder 480B A35B Instruct Fp8": "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
+    "Qwen3-VL-8B-Instruct": "Qwen/Qwen3-VL-8B-Instruct",
+    "Qwen2.5 7B Instruct Turbo": "Qwen/Qwen2.5-7B-Instruct-Turbo",
+    "Glm 4.5 Air Fp8": "THUDM/GLM-4.5-Air-FP8",
+    "Llama 4 Maverick Instruct (17Bx128E)": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+    "Meta Llama 3.3 70B Instruct Turbo": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+    "Meta Llama 3.1 8B Instruct Turbo": "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+    "Mistral Small (24B) Instruct 25.01": "mistralai/Mistral-Small-24B-Instruct-2501",
+    "Mixtral-8x7B Instruct v0.1": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+    "Gemma 3N E4B Instruct": "google/gemma-3n-E4B-it",
+    "Meta Llama 3 8B Instruct Lite": "meta-llama/Meta-Llama-3-8B-Instruct-Lite",
+    "Arize AI Qwen 2 1.5B Instruct": "Qwen/Qwen2-1.5B-Instruct",
+    "Apriel 1.5 15B Thinker": "ServiceNow/Apriel-1.5-15B-Thinker",
+    "Trinity Mini": "UBC-NLP/TrinityLM-Mini",
+    "EssentialAI Rnj-1 Instruct": "EssentialAI/rnj-1-instruct",
+    "Cogito v2.1 671B": "deepcogito/Cogito-v2.1-671b-preview",
+    "Apriel 1.6 15B Thinker": "ServiceNow/Apriel-1.6-15B-Thinker",
+    "DeepSeek R1-0528": "deepseek-ai/DeepSeek-R1-0528",
+    "OpenAI GPT-OSS 20B": "openai/gpt-oss-20b",
+    "Deepseek V3.1": "deepseek-ai/DeepSeek-V3.1",
+    "Qwen3 235B A22B Instruct 2507 FP8 Throughput": "Qwen/Qwen3-235B-A22B-Instruct-2507-tput",
+    "Qwen3 235B A22B Thinking 2507 FP8": "Qwen/Qwen3-235B-A22B-Thinking-2507-FP8",
+    "OpenAI GPT-OSS 120B": "openai/gpt-oss-120b",
+    "Lfm2 24B A2b Preview": "Liquid/LFM2-24B-A2B-Preview",
+    "LFM2-24B-A2B": "Liquid/LFM2-24B-A2B",
+    "nim/nvidia/llama-3.3-nemotron-super-49b-v1": "nim/nvidia/llama-3.3-nemotron-super-49b-v1",
+    "Deepseek Coder 33B Instruct": "deepseek-ai/deepseek-coder-33b-instruct",
+    "Llama 4 Scout (17Bx16E)": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+    "Meta Llama 3.1 405B Instruct": "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
+}
+
+def resolve_model_id(display_name: str) -> str:
+    """Convert a display name to the real Together AI API model ID."""
+    return MODEL_ID_MAP.get(display_name, display_name)
+
 BABCOCK_SCHEMA_PROMPT = (
     "You are a Neo4j Cypher expert for the Babcock University Knowledge Graph.\n\n"
     "## Graph Schema\n"
@@ -141,7 +186,7 @@ BABCOCK_SCHEMA_PROMPT = (
 @app.post("/v1/query", response_model=QueryResponse)
 async def ai_query(request: QueryRequest, user: str = Depends(verify_token)):
     """Text-to-Cypher pipeline: NL -> Cypher -> Neo4j -> LLM Answer."""
-    model_name = request.model or settings.llm_model_name
+    model_name = resolve_model_id(request.model or settings.llm_model_name)
 
     # Step 1: Generate Cypher
     cypher_query = None
