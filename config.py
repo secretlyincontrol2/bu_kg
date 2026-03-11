@@ -1,5 +1,8 @@
 import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
 
 class Settings(BaseSettings):
     database_url: str

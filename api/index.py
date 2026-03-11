@@ -158,42 +158,42 @@ def resolve_model_id(display_name: str) -> str:
     """Convert a display name to the real Together AI API model ID."""
     return MODEL_ID_MAP.get(display_name, display_name)
 
+CYPHER_MODEL = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+
 BABCOCK_SCHEMA_PROMPT = (
     "You are the Iron-Clad Cypher Expert for the Babcock University Knowledge Graph.\n"
-    "Your goal is to generate precise Cypher queries based on the following EXACT schema.\n\n"
+    "Your goal is to generate precise Cypher queries. IMPORTANT: This is a HYBRID schema.\n\n"
     "## 1. Node Labels & Properties\n"
-    "- (s:School) {Name: 'School Name'}\n"
-    "- (p:Program) {Name: 'Program/Dept Name', Admission_Requirement: 'Text details', global_id: 'ID'}\n"
-    "- (st:Staff) {Staff_Name: 'Name', Role: 'Title', Email: 'Email', Department: 'Dept Name'}\n"
-    "- (i:Insight) {Fact_Description: 'The text fact', core_summary: 'Summary', source_url: 'Link'}\n"
+    "- (s:School) {School_Name: 'Name', School_ID: 'ID'}\n"
+    "- (p:Program) {Program_Name: 'Name', `Admission Requirements`: 'Text', School_ID: 'ID'}\n"
+    "- (st:Staff) {Staff_Name: 'Name', Role: 'Title', Department: 'Dept', School_ID: 'ID'}\n"
+    "- (i:Insight) {title: 'Title', core_summary: 'Text'}\n"
     "- (c:Course) {Course_Title: 'Title', Course_Code: 'Code'}\n"
-    "- (caf:Cafeteria) {Name: 'Name', Location: 'Building'}\n"
-    "- (v:Vendor) {Name: 'Name', Category: 'Type'}\n"
-    "- (w:WorshipCenter) {Name: 'Church Name'}\n\n"
-    "## 2. Relationships\n"
-    "- (p:Program)-[:PART_OF]->(s:School)\n"
-    "- (i:Insight)-[:PART_OF]->(p:Program)\n"
-    "- (st:Staff)-[:PART_OF]->(p:Program)\n"
-    "- (st:Staff)-[:WORKS_IN]->(s:School)\n"
-    "- (c:Course)-[:PART_OF]->(p:Program)\n"
-    "- (caf:Cafeteria | v:Vendor | w:WorshipCenter)-[:LOCATED_AT]->(:Infrastructure)\n\n"
-    "## 3. Knowledge Retrieval Rules\n"
-    "- 'Admission requirements' are in p.Admission_Requirement property.\n"
-    "- 'Insights', 'Facts', or 'General Info' are in i.Fact_Description of Insight nodes linked to Programs.\n"
-    "- ALWAYS use toLower() for string comparisons (e.g., WHERE toLower(p.Name) CONTAINS 'computer science').\n"
-    "- Use DISTINCT when returning lists of names.\n\n"
+    "- (caf:Cafeteria) {Name: 'Name'}\n\n"
+    "## 2. Hybrid Connections\n"
+    "A. GRAPH RELATIONSHIPS (Use these with ->):\n"
+    "   - (c:Course)-[:PART_OF]->(p:Program)\n"
+    "   - (p:Program)-[:PART_OF]->(s:School)\n"
+    "   - (caf:Cafeteria)-[:LOCATED_AT]->(:Infrastructure)\n\n"
+    "B. RELATIONAL & ORPHAN SEARCH (How to find nodes with no direct links):\n"
+    "   - Staff to School: (st:Staff), (s:School) WHERE st.School_ID = s.School_ID\n"
+    "   - Staff to Program: (st:Staff), (p:Program) WHERE toLower(st.Department) CONTAINS toLower(p.Program_Name)\n"
+    "   - Insights: Insights are ORPHANED. To find an insight about 'X', search BOTH i.title and i.core_summary directly.\n\n"
+    "## 3. Retrieval Rules\n"
+    "- ALWAYS use toLower() and CONTAINS for robust text matching.\n"
+    "- Use backticks for properties with spaces: p.`Admission Requirements`.\n\n"
     "## 4. Examples\n"
     "Q: What are the admission requirements for Nursing?\n"
-    "Cypher: MATCH (p:Program) WHERE toLower(p.Name) CONTAINS 'nursing' RETURN p.Name AS Program, p.Admission_Requirement AS Requirements\n\n"
+    "Cypher: MATCH (p:Program) WHERE toLower(p.Program_Name) CONTAINS 'nursing' RETURN p.Program_Name AS Program, p.`Admission Requirements` AS Requirements\n\n"
     "Q: Tell me an insight about Computer Science.\n"
-    "Cypher: MATCH (i:Insight)-[:PART_OF]->(p:Program) WHERE toLower(p.Name) CONTAINS 'computer science' RETURN i.Fact_Description AS Insight, i.source_url AS Source\n\n"
+    "Cypher: MATCH (i:Insight) WHERE toLower(i.title) CONTAINS 'computer science' OR toLower(i.core_summary) CONTAINS 'computer science' RETURN i.title AS Insight, i.core_summary AS Summary\n\n"
     "Q: List all lecturers in the School of Computing.\n"
-    "Cypher: MATCH (st:Staff)-[:WORKS_IN]->(s:School) WHERE toLower(s.Name) CONTAINS 'computing' RETURN DISTINCT st.Staff_Name AS Lecturer, st.Role AS Role\n\n"
-    "Q: Where is the nearest cafeteria?\n"
-    "Cypher: MATCH (caf:Cafeteria) RETURN caf.Name AS Name, caf.Location AS Location LIMIT 5\n\n"
+    "Cypher: MATCH (st:Staff), (s:School) WHERE st.School_ID = s.School_ID AND toLower(s.School_Name) CONTAINS 'computing' RETURN DISTINCT st.Staff_Name AS Lecturer, st.Role AS Role\n\n"
+    "Q: List all courses for Computer Science.\n"
+    "Cypher: MATCH (c:Course)-[:PART_OF]->(p:Program) WHERE toLower(p.Program_Name) CONTAINS 'computer science' RETURN c.Course_Title AS Course\n\n"
     "## Rules\n"
     "- Return ONLY raw Cypher. No markdown. No explanations.\n"
-    "- If no path exists, return: MATCH (n) WHERE false RETURN 'None'\n"
+    "- Use LIMIT 10 unless asked for more.\n"
 )
 
 
@@ -210,7 +210,7 @@ async def ai_query(request: QueryRequest, user: str = Depends(verify_token)):
                 "https://api.together.xyz/v1/chat/completions",
                 headers={"Authorization": f"Bearer {settings.together_api_key}"},
                 json={
-                    "model": model_name,
+                    "model": CYPHER_MODEL,
                     "messages": [
                         {"role": "system", "content": BABCOCK_SCHEMA_PROMPT},
                         {"role": "user", "content": f"Query: {request.query}"},
