@@ -159,27 +159,41 @@ def resolve_model_id(display_name: str) -> str:
     return MODEL_ID_MAP.get(display_name, display_name)
 
 BABCOCK_SCHEMA_PROMPT = (
-    "You are a Neo4j Cypher expert for the Babcock University Knowledge Graph.\n\n"
-    "## Graph Schema\n"
+    "You are the Iron-Clad Cypher Expert for the Babcock University Knowledge Graph.\n"
+    "Your goal is to generate precise Cypher queries based on the following EXACT schema.\n\n"
+    "## 1. Node Labels & Properties\n"
     "- (s:School) {Name: 'School Name'}\n"
-    "- (p:Program) {Name: 'Department/Program Name'}\n"
-    "- (st:Staff) {Staff_Name: 'Name', Role: 'Position', Department: 'Dept'}\n\n"
-    "## Key Relationships\n"
-    "- (p:Program)-[:BELONGS_TO]->(s:School)\n"
-    "- (st:Staff)-[:WORKS_IN]->(s:School)\n\n"
-    "## Critical Join Logic\n"
-    "- If asked about a 'Department', it often maps to a 'Program' node.\n"
-    "- To find which School a Department/Program belongs to, use: MATCH (p:Program)-[:BELONGS_TO]->(s:School)\n"
-    "- To find which School a Staff member works in, use: MATCH (st:Staff)-[:WORKS_IN]->(s:School)\n\n"
-    "## Examples\n"
-    "Q: Which school does Computer Science belong to?\n"
-    "Cypher: MATCH (p:Program)-[:BELONGS_TO]->(s:School) WHERE toLower(p.Name) CONTAINS 'computer science' RETURN s.Name AS SchoolName\n\n"
-    "Q: Who leads the School of Computing?\n"
-    "Cypher: MATCH (st:Staff)-[:WORKS_IN]->(s:School) WHERE toLower(s.Name) CONTAINS 'computing' AND (toLower(st.Role) CONTAINS 'dean' OR toLower(st.Role) CONTAINS 'head') RETURN st.Staff_Name AS Dean, st.Role AS Role\n\n"
+    "- (p:Program) {Name: 'Program/Dept Name', Admission_Requirement: 'Text details', global_id: 'ID'}\n"
+    "- (st:Staff) {Staff_Name: 'Name', Role: 'Title', Email: 'Email', Department: 'Dept Name'}\n"
+    "- (i:Insight) {Fact_Description: 'The text fact', core_summary: 'Summary', source_url: 'Link'}\n"
+    "- (c:Course) {Course_Title: 'Title', Course_Code: 'Code'}\n"
+    "- (caf:Cafeteria) {Name: 'Name', Location: 'Building'}\n"
+    "- (v:Vendor) {Name: 'Name', Category: 'Type'}\n"
+    "- (w:WorshipCenter) {Name: 'Church Name'}\n\n"
+    "## 2. Relationships\n"
+    "- (p:Program)-[:PART_OF]->(s:School)\n"
+    "- (i:Insight)-[:PART_OF]->(p:Program)\n"
+    "- (st:Staff)-[:PART_OF]->(p:Program)\n"
+    "- (st:Staff)-[:WORKS_IN]->(s:School)\n"
+    "- (c:Course)-[:PART_OF]->(p:Program)\n"
+    "- (caf:Cafeteria | v:Vendor | w:WorshipCenter)-[:LOCATED_AT]->(:Infrastructure)\n\n"
+    "## 3. Knowledge Retrieval Rules\n"
+    "- 'Admission requirements' are in p.Admission_Requirement property.\n"
+    "- 'Insights', 'Facts', or 'General Info' are in i.Fact_Description of Insight nodes linked to Programs.\n"
+    "- ALWAYS use toLower() for string comparisons (e.g., WHERE toLower(p.Name) CONTAINS 'computer science').\n"
+    "- Use DISTINCT when returning lists of names.\n\n"
+    "## 4. Examples\n"
+    "Q: What are the admission requirements for Nursing?\n"
+    "Cypher: MATCH (p:Program) WHERE toLower(p.Name) CONTAINS 'nursing' RETURN p.Name AS Program, p.Admission_Requirement AS Requirements\n\n"
+    "Q: Tell me an insight about Computer Science.\n"
+    "Cypher: MATCH (i:Insight)-[:PART_OF]->(p:Program) WHERE toLower(p.Name) CONTAINS 'computer science' RETURN i.Fact_Description AS Insight, i.source_url AS Source\n\n"
+    "Q: List all lecturers in the School of Computing.\n"
+    "Cypher: MATCH (st:Staff)-[:WORKS_IN]->(s:School) WHERE toLower(s.Name) CONTAINS 'computing' RETURN DISTINCT st.Staff_Name AS Lecturer, st.Role AS Role\n\n"
+    "Q: Where is the nearest cafeteria?\n"
+    "Cypher: MATCH (caf:Cafeteria) RETURN caf.Name AS Name, caf.Location AS Location LIMIT 5\n\n"
     "## Rules\n"
-    "- Return ONLY Cypher. No markdown. No comments.\n"
-    "- Use toLower() for comparisons.\n"
-    "- If no match is possible, return: MATCH (n) WHERE false RETURN 'None' LIMIT 1\n"
+    "- Return ONLY raw Cypher. No markdown. No explanations.\n"
+    "- If no path exists, return: MATCH (n) WHERE false RETURN 'None'\n"
 )
 
 
@@ -202,15 +216,17 @@ async def ai_query(request: QueryRequest, user: str = Depends(verify_token)):
                         {"role": "user", "content": f"Query: {request.query}"},
                     ],
                     "temperature": 0.0,
-                    "max_tokens": 200,
+                    "max_tokens": 150,
                 },
                 timeout=20.0,
             )
             cypher_resp.raise_for_status()
             cypher_query = cypher_resp.json()["choices"][0]["message"]["content"].strip()
+            # Clean up potential LLM markdown garbage
             cypher_query = cypher_query.replace("```cypher", "").replace("```", "").strip()
+            cypher_query = cypher_query.split(';')[0].strip() # Take only first query if multiple
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Cypher generation failed (Model: {model_name}): {str(e)}")
+        raise HTTPException(status_code=502, detail=f"Cypher generation failed: {str(e)}")
 
     # Step 2: Execute Cypher
     nodes = []
