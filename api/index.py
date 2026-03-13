@@ -1,6 +1,12 @@
 import jwt
+import asyncio
+import sys
 from datetime import datetime, timedelta
 import httpx
+
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from fastapi import FastAPI, Depends, HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,8 +46,22 @@ def get_db():
 def verify_token(
     credentials: HTTPAuthorizationCredentials = Security(security)
 ):
-    """Validate JWT Token statelessly using JWT_SECRET."""
+    """Validate JWT Token or raw API Key (Backward Compatibility)."""
     token = credentials.credentials
+    
+    # CASE 1: Raw API Key (Older SDK versions)
+    if token.startswith("bu_kg_"):
+        db_session = SessionLocal()
+        try:
+            hashed_key = get_hash(token)
+            key_record = db_session.query(ApiKey).filter(ApiKey.key_hash == hashed_key).first()
+            if not key_record:
+                raise HTTPException(status_code=401, detail="Invalid API Key.")
+            return key_record.owner
+        finally:
+            db_session.close()
+
+    # CASE 2: JWT Token (Stateless high-speed path)
     try:
         # Decode and verify signature
         payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
